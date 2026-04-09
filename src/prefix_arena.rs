@@ -296,6 +296,7 @@ impl<'buf, const N: usize> From<&'buf mut [MaybeUninit<u8>; N]> for PrefixArena<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::vec::Vec;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum TestError {
