@@ -1,5 +1,21 @@
 use core::cell::UnsafeCell;
+use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+
+#[inline(always)]
+const unsafe fn bytes_as_uninit_mut(slice: &mut [u8]) -> &mut [MaybeUninit<u8>] {
+    unsafe { core::mem::transmute::<&mut [u8], &mut [MaybeUninit<u8>]>(slice) }
+}
+
+#[inline(always)]
+const unsafe fn uninit_as_bytes(slice: &[MaybeUninit<u8>]) -> &[u8] {
+    unsafe { core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(slice) }
+}
+
+#[inline(always)]
+const unsafe fn uninit_as_bytes_mut(slice: &mut [MaybeUninit<u8>]) -> &mut [u8] {
+    unsafe { core::mem::transmute::<&mut [MaybeUninit<u8>], &mut [u8]>(slice) }
+}
 
 /// A bump-style arena over caller-provided byte storage.
 ///
@@ -13,9 +29,7 @@ pub struct PrefixArena<'buf> {
 impl<'buf> PrefixArena<'buf> {
     #[inline(always)]
     pub const fn new(arena: &'buf mut [u8]) -> Self {
-        // SAFETY: Transmuting a mutable slice of u8 to a mutable slice of MaybeUninit<u8> is safe
-        // because MaybeUninit<u8> has the same memory layout as u8 and does not require any special handling.
-        Self::from_uninit(unsafe { core::mem::transmute(arena) })
+        Self::from_uninit(unsafe { bytes_as_uninit_mut(arena) })
     }
 
     #[inline]
@@ -69,7 +83,7 @@ impl<'buf> PrefixArena<'buf> {
         let buffer = unsafe { &mut *self.remaining.get() };
         let (used, remaining) = unsafe { buffer.split_at_mut_unchecked(n) };
         unsafe { *self.remaining.get() = remaining };
-        unsafe { core::mem::transmute(used) }
+        unsafe { uninit_as_bytes_mut(used) }
     }
 
     /// Returns all bytes that still remain in the arena and consumes `self`.
@@ -94,8 +108,9 @@ impl<'buf> PrefixArena<'buf> {
     where
         F: FnOnce(&mut [u8]) -> Result<usize, E>,
     {
-        let buffer: &mut [MaybeUninit<u8>] = unsafe { self.remaining.get().as_mut().unwrap_unchecked() };
-        let slice: &mut [u8] = unsafe { core::mem::transmute(buffer) };
+        let buffer: &mut [MaybeUninit<u8>] =
+            unsafe { self.remaining.get().as_mut().unwrap_unchecked() };
+        let slice: &mut [u8] = unsafe { uninit_as_bytes_mut(buffer) };
         let initialized_len = f(slice)?;
         if initialized_len > slice.len() {
             panic!("Initializer function returned a length greater than the current buffer size");
@@ -114,7 +129,7 @@ where
     'buf: 'arena,
 {
     remaining: *mut &'buf mut [MaybeUninit<u8>],
-    _marker: core::marker::PhantomData<&'arena ()>,
+    _marker: PhantomData<&'arena ()>,
 }
 
 impl<'arena, 'buf> ArenaView<'arena, 'buf> {
@@ -122,14 +137,14 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
     const fn new(remaining: *mut &'buf mut [MaybeUninit<u8>]) -> Self {
         Self {
             remaining,
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
     /// Returns the number of bytes visible through this temporary view.
     #[inline]
     pub const fn len(&self) -> usize {
-        let remaining = unsafe { &*self.remaining.as_mut().unwrap_unchecked() };
+        let remaining = unsafe { self.remaining.as_mut().unwrap_unchecked() };
         remaining.len()
     }
 
@@ -148,7 +163,7 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
     /// Returns the remaining arena bytes as uninitialized storage.
     #[inline]
     pub const fn as_slice(&self) -> &[MaybeUninit<u8>] {
-        unsafe { &*self.remaining.as_mut().unwrap_unchecked() }
+        unsafe { self.remaining.as_mut().unwrap_unchecked() }
     }
 
     /// Returns the remaining arena bytes as `u8`.
@@ -157,7 +172,7 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
     /// Every returned byte must be initialized before it is read as `u8`.
     #[inline]
     pub const unsafe fn as_slice_unchecked(&self) -> &[u8] {
-        unsafe { core::mem::transmute(self.as_slice()) }
+        unsafe { uninit_as_bytes(self.as_slice()) }
     }
 
     /// Returns the remaining arena bytes as mutable uninitialized storage.
@@ -169,7 +184,7 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
     /// Returns the remaining arena bytes as mutable uninitialized storage.
     #[inline]
     pub const fn as_slice_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-        unsafe { &mut *self.remaining.as_mut().unwrap_unchecked() }
+        unsafe { self.remaining.as_mut().unwrap_unchecked() }
     }
 
     /// Returns the remaining arena bytes as mutable `u8`.
@@ -178,7 +193,7 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
     /// Every returned byte must be initialized before it is read as `u8`.
     #[inline]
     pub const unsafe fn as_slice_mut_unchecked(&mut self) -> &mut [u8] {
-        unsafe { core::mem::transmute(self.as_slice_mut()) }
+        unsafe { uninit_as_bytes_mut(self.as_slice_mut()) }
     }
 
     /// Lets `f` initialize a prefix of the temporary view and returns that prefix.
@@ -250,7 +265,7 @@ impl<'arena, 'buf> ArenaView<'arena, 'buf> {
         let buffer = unsafe { &mut *self.remaining.as_mut().unwrap_unchecked() };
         let (used, remaining) = unsafe { buffer.split_at_mut_unchecked(n) };
         unsafe { *self.remaining.as_mut().unwrap_unchecked() = remaining };
-        unsafe { core::mem::transmute(used) }
+        unsafe { uninit_as_bytes_mut(used) }
     }
 }
 
@@ -297,9 +312,8 @@ mod tests {
 
     #[test]
     fn test_init_from_uninitialized() {
-        let mut data = [1, 2, 3, 4, 5];
-        let head_arena =
-            PrefixArena::from_uninit(unsafe { core::mem::transmute::<_, &mut [MaybeUninit<u8>; 5]>(&mut data) });
+        let mut data = [1, 2, 3, 4, 5].map(MaybeUninit::new);
+        let head_arena = PrefixArena::from_uninit(&mut data);
         assert_eq!(head_arena.len(), 5);
         assert!(!head_arena.is_empty());
     }
@@ -310,7 +324,7 @@ mod tests {
         let head_arena = PrefixArena::new(&mut data[..]);
         assert_eq!(head_arena.len(), 5);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[1, 2, 3, 4, 5]
         );
     }
@@ -318,7 +332,7 @@ mod tests {
     #[test]
     fn test_from_uninitialized_slice() {
         let data: [u8; 5] = [1, 2, 3, 4, 5];
-        let mut uninit_data = unsafe { core::mem::transmute::<_, [MaybeUninit<u8>; 5]>(data) };
+        let mut uninit_data = data.map(MaybeUninit::new);
 
         let head_arena = PrefixArena::from_uninit(&mut uninit_data);
         assert_eq!(head_arena.len(), 5);
@@ -365,7 +379,7 @@ mod tests {
         let mut head_arena = PrefixArena::new(&mut data);
         let mut temp_buffer = head_arena.view();
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(temp_buffer.as_slice_mut()) },
+            unsafe { uninit_as_bytes(temp_buffer.as_slice_mut()) },
             &[1, 2, 3, 4, 5]
         );
     }
@@ -374,7 +388,10 @@ mod tests {
         let mut data = [1, 2, 3, 4, 5];
         let mut head_arena = PrefixArena::new(&mut data);
         let temp_buffer = head_arena.view();
-        assert_eq!(unsafe { temp_buffer.as_slice_unchecked() }, &[1, 2, 3, 4, 5]);
+        assert_eq!(
+            unsafe { temp_buffer.as_slice_unchecked() },
+            &[1, 2, 3, 4, 5]
+        );
     }
 
     #[test]
@@ -384,7 +401,10 @@ mod tests {
         let mut temp_buffer = head_arena.view();
         let slice = temp_buffer.as_slice_mut();
         slice[0].write(10);
-        assert_eq!(unsafe { temp_buffer.as_slice_unchecked() }, &[10, 2, 3, 4, 5]);
+        assert_eq!(
+            unsafe { temp_buffer.as_slice_unchecked() },
+            &[10, 2, 3, 4, 5]
+        );
     }
 
     #[test]
@@ -394,7 +414,10 @@ mod tests {
         let mut temp_buffer = head_arena.view();
         let slice = unsafe { temp_buffer.as_slice_mut_unchecked() };
         slice[0] = 10;
-        assert_eq!(unsafe { temp_buffer.as_slice_unchecked() }, &[10, 2, 3, 4, 5]);
+        assert_eq!(
+            unsafe { temp_buffer.as_slice_unchecked() },
+            &[10, 2, 3, 4, 5]
+        );
     }
 
     #[test]
@@ -413,7 +436,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Initializer function returned a length greater than the current buffer size")]
+    #[should_panic(
+        expected = "Initializer function returned a length greater than the current buffer size"
+    )]
     fn test_head_arena_init_then_acquire_with_panics_on_invalid_len() {
         let mut data = [0u8; 3];
         let head_arena = PrefixArena::new(&mut data);
@@ -455,7 +480,7 @@ mod tests {
         assert_eq!(detached, &[21, 22]);
         assert_eq!(head_arena.len(), 3);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[0, 0, 0]
         );
     }
@@ -476,13 +501,15 @@ mod tests {
         assert_eq!(error, TestError::Expected);
         assert_eq!(head_arena.len(), 5);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[99, 2, 3, 4, 5]
         );
     }
 
     #[test]
-    #[should_panic(expected = "Initializer function returned a length greater than the current buffer size")]
+    #[should_panic(
+        expected = "Initializer function returned a length greater than the current buffer size"
+    )]
     fn test_temp_buffer_as_mut_with_init_panics_on_invalid_len() {
         let mut data = [0u8; 3];
         let mut head_arena = PrefixArena::new(&mut data);
@@ -492,7 +519,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Initializer function returned a length greater than the current buffer size")]
+    #[should_panic(
+        expected = "Initializer function returned a length greater than the current buffer size"
+    )]
     fn test_temp_buffer_init_then_acquire_with_panics_on_invalid_len() {
         let mut data = [0u8; 3];
         let mut head_arena = PrefixArena::new(&mut data);
@@ -510,7 +539,7 @@ mod tests {
         assert_eq!(detached, &[1, 2]);
         assert_eq!(head_arena.len(), 3);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[3, 4, 5]
         );
     }
@@ -538,7 +567,7 @@ mod tests {
         assert_eq!(second, &[3, 4]);
         assert_eq!(head_arena.len(), 2);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[5, 6]
         );
     }
@@ -560,7 +589,7 @@ mod tests {
         assert_eq!(detached.len(), 0);
         assert_eq!(head_arena.len(), 3);
         assert_eq!(
-            unsafe { core::mem::transmute::<_, &[u8]>(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
             &[1, 2, 3]
         );
     }
@@ -646,7 +675,7 @@ mod tests {
     fn test_take_remaining() {
         let mut data = [1, 2, 3, 4, 5];
         let head_arena = PrefixArena::new(&mut data);
-        let remaining = unsafe { core::mem::transmute::<_, &mut [u8]>(head_arena.take_remaining()) };
+        let remaining = unsafe { uninit_as_bytes_mut(head_arena.take_remaining()) };
         assert_eq!(remaining, &[1, 2, 3, 4, 5]);
     }
 
@@ -655,7 +684,7 @@ mod tests {
         let mut data = [1, 2, 3, 4, 5];
         let head_arena = PrefixArena::new(&mut data);
         let _ = head_arena.take_prefix(2); // Detach first 2 bytes
-        let remaining = unsafe { core::mem::transmute::<_, &mut [u8]>(head_arena.take_remaining()) };
+        let remaining = unsafe { uninit_as_bytes_mut(head_arena.take_remaining()) };
         assert_eq!(remaining, &[3, 4, 5]);
     }
 }

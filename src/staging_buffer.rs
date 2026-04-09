@@ -1,4 +1,30 @@
-use crate::prefix_arena::{ArenaView, PrefixArena};
+use crate::{ArenaView, PrefixArena};
+use core::fmt;
+use core::mem::MaybeUninit;
+
+#[inline(always)]
+const unsafe fn bytes_as_uninit(slice: &[u8]) -> &[MaybeUninit<u8>] {
+    unsafe { core::mem::transmute::<&[u8], &[MaybeUninit<u8>]>(slice) }
+}
+
+#[inline(always)]
+const unsafe fn uninit_as_bytes(slice: &[MaybeUninit<u8>]) -> &[u8] {
+    unsafe { core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(slice) }
+}
+
+#[inline(always)]
+const unsafe fn uninit_as_bytes_mut(slice: &mut [MaybeUninit<u8>]) -> &mut [u8] {
+    unsafe { core::mem::transmute::<&mut [MaybeUninit<u8>], &mut [u8]>(slice) }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StagingBufferError;
+
+impl fmt::Display for StagingBufferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("staging buffer capacity exceeded")
+    }
+}
 
 /// A staging buffer over the remaining bytes of a [`PrefixArena`].
 ///
@@ -25,9 +51,9 @@ where
     /// Appends one byte to the written prefix.
     ///
     /// Returns `Ok(())` on success and `Err(())` if no capacity remains.
-    pub fn push_byte(&mut self, byte: u8) -> Result<(), ()> {
+    pub fn push_byte(&mut self, byte: u8) -> Result<(), StagingBufferError> {
         if self.used >= self.inner.len() {
-            return Err(());
+            return Err(StagingBufferError);
         }
         self.inner.as_slice_mut()[self.used].write(byte);
         self.used += 1;
@@ -37,12 +63,12 @@ where
     /// Appends the entire slice to the written prefix.
     ///
     /// Returns `Ok(())` on success and `Err(())` if the full slice does not fit.
-    pub fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), ()> {
+    pub fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), StagingBufferError> {
         if self.used + slice.len() > self.inner.len() {
-            return Err(());
+            return Err(StagingBufferError);
         }
         self.inner.as_slice_mut()[self.used..self.used + slice.len()]
-            .copy_from_slice(unsafe { core::mem::transmute(slice) });
+            .copy_from_slice(unsafe { bytes_as_uninit(slice) });
         self.used += slice.len();
         Ok(())
     }
@@ -51,24 +77,29 @@ where
     pub fn extend_from_slice_capped(&mut self, slice: &[u8]) -> usize {
         let to_fill = core::cmp::min(self.spare_capacity(), slice.len());
         self.inner.as_slice_mut()[self.used..self.used + to_fill]
-            .copy_from_slice(unsafe { core::mem::transmute(&slice[..to_fill]) });
+            .copy_from_slice(unsafe { bytes_as_uninit(&slice[..to_fill]) });
         self.used += to_fill;
         to_fill
     }
 
     /// Returns the written prefix as an immutable slice.
     pub fn written(&self) -> &[u8] {
-        unsafe { core::mem::transmute(&self.inner.as_slice()[..self.used]) }
+        unsafe { uninit_as_bytes(&self.inner.as_slice()[..self.used]) }
     }
 
     /// Returns the written prefix as a mutable slice.
     pub fn written_mut(&mut self) -> &mut [u8] {
-        unsafe { core::mem::transmute(&mut self.inner.as_slice_mut()[..self.used]) }
+        unsafe { uninit_as_bytes_mut(&mut self.inner.as_slice_mut()[..self.used]) }
     }
 
     /// Returns the number of bytes currently stored in the buffer.
     pub const fn len(&self) -> usize {
         self.used
+    }
+
+    /// Returns `true` when no bytes have been written.
+    pub const fn is_empty(&self) -> bool {
+        self.used == 0
     }
 
     /// Returns the total capacity of the buffer.
@@ -88,13 +119,13 @@ where
 
     /// Detaches the written prefix from the underlying arena.
     pub fn into_written_slice(self) -> &'b mut [u8] {
-        unsafe { core::mem::transmute(self.inner.take_prefix(self.used)) }
+        unsafe { uninit_as_bytes_mut(self.inner.take_prefix(self.used)) }
     }
 }
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::prefix_arena::PrefixArena as HeadArena;
+    use crate::PrefixArena as HeadArena;
 
     #[test]
     fn test_basic_push() {
