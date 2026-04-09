@@ -18,4 +18,6 @@ homepage = "https://github.com/kdimonych/prefix-arena"
 documentation = "https://docs.rs/prefix-arena"
 authors = ["Dmitriy Krasnyansky <k.dimonych@gmail.com>"]
 
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE-*"]
+
 [dependencies]
