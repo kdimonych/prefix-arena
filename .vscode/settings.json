@@ -1,0 +1,8 @@
+{
+    "rust-analyzer.cargo.allTargets": true,
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true
+    },
+    "dependi.rust.lockFileEnabled": true,
+}
