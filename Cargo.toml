@@ -2,5 +2,20 @@
 name = "prefix-arena"
 version = "0.1.0"
 edition = "2024"
+description = "A bump-style arena over caller-provided byte storage."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kdimonych/prefix-arena"
+readme = "README.md"
+keywords = [
+  "embedded",
+  "memory-management",
+  "arena",
+  "bump-allocator",
+  "no-std",
+]
+categories = ["embedded", "memory-management", "data-structures", "no-std"]
+homepage = "https://github.com/kdimonych/prefix-arena"
+documentation = "https://docs.rs/prefix-arena"
+authors = ["Dmitriy Krasnyansky <k.dimonych@gmail.com>"]
 
 [dependencies]
