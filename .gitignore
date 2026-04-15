@@ -1,5 +1,4 @@
 # Rust specific
-firmware/target/
 **/*.rs.bk
 .#*
 .gdb_history
