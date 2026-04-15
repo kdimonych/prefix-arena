@@ -306,26 +306,26 @@ mod tests {
     #[test]
     fn test_init_from_initialized() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::new(&mut data);
-        assert_eq!(head_arena.len(), 5);
-        assert!(!head_arena.is_empty());
+        let prefix_arena = PrefixArena::new(&mut data);
+        assert_eq!(prefix_arena.len(), 5);
+        assert!(!prefix_arena.is_empty());
     }
 
     #[test]
     fn test_init_from_uninitialized() {
         let mut data = [1, 2, 3, 4, 5].map(MaybeUninit::new);
-        let head_arena = PrefixArena::from_uninit(&mut data);
-        assert_eq!(head_arena.len(), 5);
-        assert!(!head_arena.is_empty());
+        let prefix_arena = PrefixArena::from_uninit(&mut data);
+        assert_eq!(prefix_arena.len(), 5);
+        assert!(!prefix_arena.is_empty());
     }
 
     #[test]
     fn test_from_slice() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::new(&mut data[..]);
-        assert_eq!(head_arena.len(), 5);
+        let prefix_arena = PrefixArena::new(&mut data[..]);
+        assert_eq!(prefix_arena.len(), 5);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[1, 2, 3, 4, 5]
         );
     }
@@ -335,41 +335,41 @@ mod tests {
         let data: [u8; 5] = [1, 2, 3, 4, 5];
         let mut uninit_data = data.map(MaybeUninit::new);
 
-        let head_arena = PrefixArena::from_uninit(&mut uninit_data);
-        assert_eq!(head_arena.len(), 5);
-        assert!(!head_arena.is_empty());
+        let prefix_arena = PrefixArena::from_uninit(&mut uninit_data);
+        assert_eq!(prefix_arena.len(), 5);
+        assert!(!prefix_arena.is_empty());
     }
 
     #[test]
     fn test_from_array() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::from(&mut data);
-        assert_eq!(head_arena.len(), 5);
+        let prefix_arena = PrefixArena::from(&mut data);
+        assert_eq!(prefix_arena.len(), 5);
     }
 
     #[test]
     fn test_from_array_for_temporary_buffer() {
         let mut data = [1, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::from(&mut data);
-        assert_eq!(head_arena.len(), 5);
-        assert_eq!(head_arena.view().len(), 5);
+        let mut prefix_arena = PrefixArena::from(&mut data);
+        assert_eq!(prefix_arena.len(), 5);
+        assert_eq!(prefix_arena.view().len(), 5);
     }
 
     #[test]
     fn test_empty_buffer() {
         let mut data = [];
-        let head_arena = PrefixArena::new(&mut data);
-        assert_eq!(head_arena.len(), 0);
-        assert!(head_arena.is_empty());
+        let prefix_arena = PrefixArena::new(&mut data);
+        assert_eq!(prefix_arena.len(), 0);
+        assert!(prefix_arena.is_empty());
     }
 
     #[test]
     fn test_empty_buffer_for_temporary_buffer() {
         let mut data = [];
-        let mut head_arena = PrefixArena::new(&mut data);
-        assert_eq!(head_arena.len(), 0);
-        assert!(head_arena.is_empty());
-        let temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        assert_eq!(prefix_arena.len(), 0);
+        assert!(prefix_arena.is_empty());
+        let temp_buffer = prefix_arena.view();
         assert_eq!(temp_buffer.len(), 0);
         assert!(temp_buffer.is_empty());
     }
@@ -377,8 +377,8 @@ mod tests {
     #[test]
     fn test_temp_buffer_as_slice() {
         let mut data = [1, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let mut temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let mut temp_buffer = prefix_arena.view();
         assert_eq!(
             unsafe { uninit_as_bytes(temp_buffer.as_slice_mut()) },
             &[1, 2, 3, 4, 5]
@@ -387,8 +387,8 @@ mod tests {
     #[test]
     fn test_temp_buffer_as_slice_unchecked() {
         let mut data = [1, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let temp_buffer = prefix_arena.view();
         assert_eq!(
             unsafe { temp_buffer.as_slice_unchecked() },
             &[1, 2, 3, 4, 5]
@@ -398,8 +398,8 @@ mod tests {
     #[test]
     fn test_temp_buffer_as_mut_slice() {
         let mut data = [1, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let mut temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let mut temp_buffer = prefix_arena.view();
         let slice = temp_buffer.as_slice_mut();
         slice[0].write(10);
         assert_eq!(
@@ -411,8 +411,8 @@ mod tests {
     #[test]
     fn test_temp_buffer_as_mut_slice_unchecked() {
         let mut data = [1, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let mut temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let mut temp_buffer = prefix_arena.view();
         let slice = unsafe { temp_buffer.as_slice_mut_unchecked() };
         slice[0] = 10;
         assert_eq!(
@@ -422,11 +422,11 @@ mod tests {
     }
 
     #[test]
-    fn test_head_arena_init_then_acquire_with() {
+    fn test_prefix_arena_init_then_acquire_with() {
         let mut data = [0u8; 5];
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
-        let detached = head_arena
+        let detached = prefix_arena
             .init_prefix_with(|buffer| {
                 buffer[..3].copy_from_slice(&[7, 8, 9]);
                 Ok::<usize, TestError>(3)
@@ -440,18 +440,18 @@ mod tests {
     #[should_panic(
         expected = "Initializer function returned a length greater than the current buffer size"
     )]
-    fn test_head_arena_init_then_acquire_with_panics_on_invalid_len() {
+    fn test_prefix_arena_init_then_acquire_with_panics_on_invalid_len() {
         let mut data = [0u8; 3];
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
-        let _ = head_arena.init_prefix_with(|_| Ok::<usize, TestError>(4));
+        let _ = prefix_arena.init_prefix_with(|_| Ok::<usize, TestError>(4));
     }
 
     #[test]
     fn test_temp_buffer_as_mut_with_init() {
         let mut data = [0u8; 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let mut temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let mut temp_buffer = prefix_arena.view();
 
         let initialized = temp_buffer
             .init_with(|buffer| {
@@ -462,14 +462,14 @@ mod tests {
 
         assert_eq!(initialized, &[11, 12]);
         assert_eq!(temp_buffer.len(), 5);
-        assert_eq!(head_arena.len(), 5);
+        assert_eq!(prefix_arena.len(), 5);
     }
 
     #[test]
     fn test_temp_buffer_init_then_acquire_with() {
         let mut data = [0u8; 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let temp_buffer = prefix_arena.view();
 
         let detached = temp_buffer
             .init_prefix_with(|buffer| {
@@ -479,9 +479,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(detached, &[21, 22]);
-        assert_eq!(head_arena.len(), 3);
+        assert_eq!(prefix_arena.len(), 3);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[0, 0, 0]
         );
     }
@@ -489,8 +489,8 @@ mod tests {
     #[test]
     fn test_temp_buffer_init_then_acquire_with_error_preserves_arena() {
         let mut data = [1u8, 2, 3, 4, 5];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let temp_buffer = prefix_arena.view();
 
         let error = temp_buffer
             .init_prefix_with(|buffer| {
@@ -500,9 +500,9 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error, TestError::Expected);
-        assert_eq!(head_arena.len(), 5);
+        assert_eq!(prefix_arena.len(), 5);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[99, 2, 3, 4, 5]
         );
     }
@@ -513,8 +513,8 @@ mod tests {
     )]
     fn test_temp_buffer_as_mut_with_init_panics_on_invalid_len() {
         let mut data = [0u8; 3];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let mut temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let mut temp_buffer = prefix_arena.view();
 
         let _ = temp_buffer.init_with(|_| Ok::<usize, TestError>(4));
     }
@@ -525,8 +525,8 @@ mod tests {
     )]
     fn test_temp_buffer_init_then_acquire_with_panics_on_invalid_len() {
         let mut data = [0u8; 3];
-        let mut head_arena = PrefixArena::new(&mut data);
-        let temp_buffer = head_arena.view();
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let temp_buffer = prefix_arena.view();
 
         let _ = temp_buffer.init_prefix_with(|_| Ok::<usize, TestError>(4));
     }
@@ -534,13 +534,13 @@ mod tests {
     #[test]
     fn test_take_front_partial() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
-        let detached = unsafe { head_arena.take_prefix_unchecked(2) };
+        let detached = unsafe { prefix_arena.take_prefix_unchecked(2) };
         assert_eq!(detached, &[1, 2]);
-        assert_eq!(head_arena.len(), 3);
+        assert_eq!(prefix_arena.len(), 3);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[3, 4, 5]
         );
     }
@@ -548,27 +548,27 @@ mod tests {
     #[test]
     fn test_take_front_all() {
         let mut data = [1, 2, 3];
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
-        let detached = unsafe { head_arena.take_prefix_unchecked(3) };
+        let detached = unsafe { prefix_arena.take_prefix_unchecked(3) };
         assert_eq!(detached, &[1, 2, 3]);
-        assert_eq!(head_arena.len(), 0);
-        assert!(head_arena.is_empty());
+        assert_eq!(prefix_arena.len(), 0);
+        assert!(prefix_arena.is_empty());
     }
 
     #[test]
     fn test_multiple_take_fronts() {
         let mut data = [1, 2, 3, 4, 5, 6];
-        let head_arena = PrefixArena::new(&mut data);
-        let first = unsafe { head_arena.take_prefix_unchecked(2) };
+        let prefix_arena = PrefixArena::new(&mut data);
+        let first = unsafe { prefix_arena.take_prefix_unchecked(2) };
         assert_eq!(first, &[1, 2]);
-        assert_eq!(head_arena.len(), 4);
+        assert_eq!(prefix_arena.len(), 4);
 
-        let second = unsafe { head_arena.take_prefix_unchecked(2) };
+        let second = unsafe { prefix_arena.take_prefix_unchecked(2) };
         assert_eq!(second, &[3, 4]);
-        assert_eq!(head_arena.len(), 2);
+        assert_eq!(prefix_arena.len(), 2);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[5, 6]
         );
     }
@@ -577,20 +577,20 @@ mod tests {
     #[should_panic]
     fn test_take_front_too_large() {
         let mut data = [1, 2, 3];
-        let head_arena = PrefixArena::new(&mut data);
-        head_arena.take_prefix(4);
+        let prefix_arena = PrefixArena::new(&mut data);
+        prefix_arena.take_prefix(4);
     }
 
     #[test]
     fn test_take_front_zero() {
         let mut data = [1, 2, 3];
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
-        let detached = head_arena.take_prefix(0);
+        let detached = prefix_arena.take_prefix(0);
         assert_eq!(detached.len(), 0);
-        assert_eq!(head_arena.len(), 3);
+        assert_eq!(prefix_arena.len(), 3);
         assert_eq!(
-            unsafe { uninit_as_bytes(head_arena.take_remaining()) },
+            unsafe { uninit_as_bytes(prefix_arena.take_remaining()) },
             &[1, 2, 3]
         );
     }
@@ -602,13 +602,13 @@ mod tests {
         const EXPECTED_PARTS: [u8; BUFFER_SIZE] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut data: [u8; BUFFER_SIZE] = EXPECTED_PARTS;
 
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
         let mut detached_parts = Vec::new();
 
-        while !head_arena.is_empty() {
-            let to_detach = core::cmp::min(head_arena.len(), PART_SIZE);
-            let detached = unsafe { head_arena.take_prefix_unchecked(to_detach) };
+        while !prefix_arena.is_empty() {
+            let to_detach = core::cmp::min(prefix_arena.len(), PART_SIZE);
+            let detached = unsafe { prefix_arena.take_prefix_unchecked(to_detach) };
             detached_parts.push(detached);
         }
 
@@ -627,13 +627,13 @@ mod tests {
         const EXPECTED_PARTS: [u8; BUFFER_SIZE] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
         let mut data = EXPECTED_PARTS;
-        let head_arena = PrefixArena::new(&mut data);
+        let prefix_arena = PrefixArena::new(&mut data);
 
         let mut detached_parts = Vec::new();
 
-        while !head_arena.is_empty() {
-            let to_detach = core::cmp::min(head_arena.len(), PART_SIZE);
-            let detached = unsafe { head_arena.take_prefix_unchecked(to_detach) };
+        while !prefix_arena.is_empty() {
+            let to_detach = core::cmp::min(prefix_arena.len(), PART_SIZE);
+            let detached = unsafe { prefix_arena.take_prefix_unchecked(to_detach) };
             detached_parts.push(detached);
         }
 
@@ -652,12 +652,12 @@ mod tests {
         const EXPECTED_PARTS: [u8; BUFFER_SIZE] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
         let mut data = EXPECTED_PARTS;
-        let mut head_arena = PrefixArena::new(&mut data);
+        let mut prefix_arena = PrefixArena::new(&mut data);
 
         let mut detached_parts = Vec::new();
 
-        while !head_arena.is_empty() {
-            let temp_buffer = head_arena.view();
+        while !prefix_arena.is_empty() {
+            let temp_buffer = prefix_arena.view();
             let to_detach = core::cmp::min(temp_buffer.len(), PART_SIZE);
             let detached = unsafe { temp_buffer.take_prefix_unchecked(to_detach) };
             detached_parts.push(detached);
@@ -675,17 +675,17 @@ mod tests {
     #[test]
     fn test_take_remaining() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::new(&mut data);
-        let remaining = unsafe { uninit_as_bytes_mut(head_arena.take_remaining()) };
+        let prefix_arena = PrefixArena::new(&mut data);
+        let remaining = unsafe { uninit_as_bytes_mut(prefix_arena.take_remaining()) };
         assert_eq!(remaining, &[1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn subsequent_take_remaining() {
         let mut data = [1, 2, 3, 4, 5];
-        let head_arena = PrefixArena::new(&mut data);
-        let _ = head_arena.take_prefix(2); // Detach first 2 bytes
-        let remaining = unsafe { uninit_as_bytes_mut(head_arena.take_remaining()) };
+        let prefix_arena = PrefixArena::new(&mut data);
+        let _ = prefix_arena.take_prefix(2); // Detach first 2 bytes
+        let remaining = unsafe { uninit_as_bytes_mut(prefix_arena.take_remaining()) };
         assert_eq!(remaining, &[3, 4, 5]);
     }
 }
