@@ -40,7 +40,18 @@ impl<'arena, 'b> StagingBuffer<'arena, 'b>
 where
     'b: 'arena,
 {
-    /// Creates a staging buffer over the remaining space of the given arena.
+    /// Creates a staging buffer over the arena's current remaining space.
+    ///
+    /// ### Arguments:
+    /// - `arena` - The arena whose current remaining bytes will back the staging buffer.
+    ///
+    /// Note: creating the buffer does not detach any bytes from the arena. Bytes are detached only by [`Self::into_written_slice`].
+    ///
+    /// ### Returns:
+    /// A staging buffer with zero written bytes and capacity equal to the arena's current remaining length.
+    ///
+    /// ### Panic:
+    /// Does not panic.
     pub const fn new(arena: &'arena mut PrefixArena<'b>) -> Self {
         Self {
             inner: arena.view(),
@@ -50,7 +61,15 @@ where
 
     /// Appends one byte to the written prefix.
     ///
-    /// Returns `Ok(())` on success and `Err(())` if no capacity remains.
+    /// ### Arguments:
+    /// - `byte` - The byte to append.
+    ///
+    /// ### Returns:
+    /// `Ok(())` when one byte is appended.
+    /// Returns `Err(StagingBufferError)` when no spare capacity remains, and leaves the written prefix unchanged.
+    ///
+    /// ### Panic:
+    /// Does not panic.
     pub fn push_byte(&mut self, byte: u8) -> Result<(), StagingBufferError> {
         if self.used >= self.inner.len() {
             return Err(StagingBufferError);
@@ -60,9 +79,14 @@ where
         Ok(())
     }
 
-    /// Appends the entire slice to the written prefix.
+    /// Appends an entire byte slice to the written prefix.
     ///
-    /// Returns `Ok(())` on success and `Err(())` if the full slice does not fit.
+    /// ### Arguments:
+    /// - `slice` - The bytes to append.
+    ///
+    /// ### Returns:
+    /// `Ok(())` when the full slice fits and is appended.
+    /// Returns `Err(StagingBufferError)` when the full slice does not fit, and leaves the written prefix unchanged.
     pub fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), StagingBufferError> {
         if self.used + slice.len() > self.inner.len() {
             return Err(StagingBufferError);
@@ -73,7 +97,13 @@ where
         Ok(())
     }
 
-    /// Appends as much of the slice as fits and returns the number of bytes written.
+    /// Appends as much of a slice as fits.
+    ///
+    /// ### Arguments:
+    /// - `slice` - The bytes to append.
+    ///
+    /// ### Returns:
+    /// The number of bytes appended, which may be anywhere from `0` to `slice.len()`.
     pub fn extend_from_slice_capped(&mut self, slice: &[u8]) -> usize {
         let to_fill = core::cmp::min(self.spare_capacity(), slice.len());
         self.inner.as_slice_mut()[self.used..self.used + to_fill]
@@ -83,45 +113,71 @@ where
     }
 
     /// Returns the written prefix as an immutable slice.
+    ///
+    /// ### Returns:
+    /// A slice containing exactly the bytes written so far.
     pub fn written(&self) -> &[u8] {
         unsafe { uninit_as_bytes(&self.inner.as_slice()[..self.used]) }
     }
 
     /// Returns the written prefix as a mutable slice.
+    ///
+    /// ### Returns:
+    /// A mutable slice containing exactly the bytes written so far.
     pub fn written_mut(&mut self) -> &mut [u8] {
         unsafe { uninit_as_bytes_mut(&mut self.inner.as_slice_mut()[..self.used]) }
     }
 
-    /// Returns the number of bytes currently stored in the buffer.
+    /// Returns how many bytes have been written into the buffer.
+    ///
+    /// ### Returns:
+    /// The current length of the written prefix.
     pub const fn len(&self) -> usize {
         self.used
     }
 
-    /// Returns `true` when no bytes have been written.
+    /// Reports whether no bytes have been written.
+    ///
+    /// ### Returns:
+    /// `true` when `self.len() == 0`, otherwise `false`.
     pub const fn is_empty(&self) -> bool {
         self.used == 0
     }
 
     /// Returns the total capacity of the buffer.
+    ///
+    /// ### Returns:
+    /// The maximum number of bytes that can be written before the buffer reports overflow.
     pub const fn capacity(&self) -> usize {
         self.inner.len()
     }
 
-    /// Returns how many bytes can still be appended without overflowing.
+    /// Returns how many more bytes can be appended without overflowing.
+    ///
+    /// ### Returns:
+    /// `self.capacity() - self.len()`.
     pub const fn spare_capacity(&self) -> usize {
         self.inner.len() - self.used
     }
 
-    /// Marks the buffer as empty without modifying the underlying bytes.
+    /// Marks the buffer as empty without touching the underlying bytes.
+    ///
+    /// ### Returns:
+    /// This method returns `()` and resets `self.len()` to `0`.
     pub fn clear(&mut self) {
         self.used = 0;
     }
 
     /// Detaches the written prefix from the underlying arena.
+    ///
+    /// ### Returns:
+    /// A mutable slice containing exactly the bytes written so far.
+    /// Returns an empty slice when nothing was written.
     pub fn into_written_slice(self) -> &'b mut [u8] {
         unsafe { uninit_as_bytes_mut(self.inner.take_prefix(self.used)) }
     }
 }
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -287,6 +343,20 @@ pub mod tests {
     }
 
     #[test]
+    fn test_extend_error_preserves_written_prefix() {
+        let mut buffer = [0u8; 4];
+        let mut allocator = HeadArena::new(&mut buffer);
+        let mut borrowed_buffer = StagingBuffer::new(&mut allocator);
+
+        borrowed_buffer.extend_from_slice(&[1, 2]).unwrap();
+        assert!(borrowed_buffer.extend_from_slice(&[3, 4, 5]).is_err());
+
+        assert_eq!(borrowed_buffer.written(), &[1, 2]);
+        assert_eq!(borrowed_buffer.len(), 2);
+        assert_eq!(borrowed_buffer.spare_capacity(), 2);
+    }
+
+    #[test]
     fn test_multiple_extension() {
         let mut buffer = [0u8; 10];
         let mut allocator = HeadArena::new(&mut buffer);
@@ -370,5 +440,32 @@ pub mod tests {
 
         assert_eq!(slice1, slice2);
         assert_eq!(slice1, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_into_written_slice_advances_arena() {
+        let mut buffer = [0u8; 5];
+        let mut allocator = HeadArena::new(&mut buffer);
+        let mut borrowed_buffer = StagingBuffer::new(&mut allocator);
+
+        borrowed_buffer.extend_from_slice(&[10, 20, 30]).unwrap();
+        let written = borrowed_buffer.into_written_slice();
+
+        assert_eq!(written, &[10, 20, 30]);
+        assert_eq!(allocator.len(), 2);
+        let remaining = unsafe { uninit_as_bytes(allocator.take_remaining()) };
+        assert_eq!(remaining, &[0, 0]);
+    }
+
+    #[test]
+    fn test_into_written_slice_empty_keeps_arena_unchanged() {
+        let mut buffer = [0u8; 3];
+        let mut allocator = HeadArena::new(&mut buffer);
+        let borrowed_buffer = StagingBuffer::new(&mut allocator);
+
+        let written = borrowed_buffer.into_written_slice();
+
+        assert_eq!(written, &[]);
+        assert_eq!(allocator.len(), 3);
     }
 }

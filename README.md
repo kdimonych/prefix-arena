@@ -44,7 +44,7 @@ let arena = PrefixArena::new(&mut storage);
 
 let prefix = arena
     .init_prefix_with(|buffer| {
-        buffer[..4].copy_from_slice(b"rust");
+        buffer[..4].write_copy_of_slice(b"rust");
         Ok::<usize, core::convert::Infallible>(4)
     })
     .unwrap();
