@@ -210,6 +210,15 @@ impl<'buf> PrefixArena<'buf> {
 
         Ok(Some(unsafe { self.take_prefix_unchecked(initialized_len) }))
     }
+
+    /// Creates a new arena with borrowed remaining space of the original arena.
+    /// New arena does not affect the state of the original arena, but both arenas share the same underlying
+    /// storage.
+    pub fn reborrow(&mut self) -> PrefixArena<'_> {
+        PrefixArena {
+            remaining: UnsafeCell::new(unsafe { &mut *self.remaining.get() }),
+        }
+    }
 }
 
 /// A temporary view over the remaining bytes of a [`PrefixArena`].
@@ -1084,5 +1093,47 @@ mod tests {
         let _ = prefix_arena.take_prefix(2); // Detach first 2 bytes
         let remaining = unsafe { assume_init_as_bytes_mut(prefix_arena.take_remaining()) };
         assert_eq!(remaining, &[3, 4, 5]);
+    }
+
+    #[test]
+    fn test_reborrow() {
+        let mut data = [1, 2, 3, 4, 5];
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        let reborrowed = prefix_arena.reborrow();
+        let first_two = unsafe { reborrowed.take_prefix_unchecked(5) };
+        assert_eq!(first_two, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_reborrow_when_passed_to_function() {
+        // Initial state of raw memory buffer
+        let mut data = [1, 2, 3, 4, 5];
+        let func = |mut arena: PrefixArena| {
+            // Do something with the arena
+            let v = arena.view();
+            let allocated_buf = v
+                .init_prefix_with(|buf| -> Result<usize, ()> {
+                    let size = core::cmp::min(buf.len(), 2);
+                    for idx in 0..size {
+                        buf[idx].write(9);
+                    }
+                    Ok(size)
+                })
+                .unwrap();
+
+            assert_eq!(allocated_buf, &[9, 9]);
+        };
+
+        let mut prefix_arena = PrefixArena::new(&mut data);
+        // func modifies the arena buffer content, but does not shrink the arena length
+        for _ in 0..2 {
+            func(prefix_arena.reborrow());
+        }
+
+        // After the function call, the arena length should remain unchanged
+        assert_eq!(prefix_arena.len(), 5);
+        // The uninitialized content of the arena should reflect the modifications made in the function
+        let first_two = unsafe { prefix_arena.take_prefix_unchecked(5) };
+        assert_eq!(first_two, &[9, 9, 3, 4, 5]);
     }
 }

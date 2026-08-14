@@ -29,7 +29,7 @@ Add the crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-prefix-arena = "0.1"
+prefix-arena = "0.2.1"
 ```
 
 ## Basic usage
