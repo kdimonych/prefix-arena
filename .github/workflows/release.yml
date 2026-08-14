@@ -65,7 +65,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: 🧪 Run tests
-        run: ./scripts/check-build-matrix.sh test
+        run: cargo test
 
   check-crates-published:
     name: 🔍 Check if Version Already Published
